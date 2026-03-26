@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ScoreIQ — Predict Your Score</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --ink: #0d0d0d; --cream: #f5f0e8; --gold: #c8a84b; --gold-dim: rgba(200,168,75,0.15);
+      --rust: #c05a2a; --muted: #8a8070; --border: rgba(0,0,0,0.12);
+      --white: #ffffff; --shadow: 0 2px 20px rgba(0,0,0,0.07);
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--ink); min-height: 100vh; }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: 0.5;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    }
+    /* NAV */
+    nav { display: flex; justify-content: space-between; align-items: center; padding: 1.4rem 4rem; border-bottom: 1px solid var(--border); background: var(--cream); position: sticky; top: 0; z-index: 50; }
+    .nav-logo { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 900; color: var(--ink); letter-spacing: -0.02em; text-decoration: none; }
+    .nav-logo span { color: var(--gold); }
+    .nav-back { font-size: 0.85rem; color: var(--muted); text-decoration: none; transition: color 0.2s; }
+    .nav-back:hover { color: var(--ink); }
+
+    /* LAYOUT — two-column when result exists, single-col otherwise */
+    .page-outer { max-width: 1100px; margin: 0 auto; padding: 3.5rem 2rem 5rem; display: grid; grid-template-columns: 1fr; gap: 3rem; }
+    .page-outer.has-result { grid-template-columns: 1fr 1fr; align-items: start; }
+
+    /* PAGE HEADER */
+    .page-header { margin-bottom: 2.5rem; opacity: 0; animation: fadeUp 0.6s 0.1s forwards; }
+    .page-eyebrow { font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.7rem; display: flex; align-items: center; gap: 0.6rem; }
+    .page-eyebrow::before { content: ''; width: 1.5rem; height: 1px; background: var(--gold); }
+    .page-title { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 900; line-height: 1.1; letter-spacing: -0.025em; }
+    .page-title em { font-style: italic; color: var(--gold); }
+    .page-sub { font-size: 0.95rem; color: var(--muted); margin-top: 0.8rem; font-weight: 300; line-height: 1.65; }
+
+    /* PROGRESS */
+    .progress-bar-wrap { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 2.5rem; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--rust)); border-radius: 2px; width: 0%; transition: width 0.5s ease; }
+
+    /* FORM */
+    form { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; }
+    .field-group { display: flex; flex-direction: column; gap: 0.45rem; opacity: 0; animation: fadeUp 0.6s forwards; }
+    .field-group.full-width { grid-column: 1 / -1; }
+    .field-label { font-size: 0.78rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+    .field-hint { font-size: 0.75rem; color: var(--muted); margin-top: -0.15rem; }
+    select, input[type="number"] {
+      width: 100%; padding: 0.85rem 1rem; background: var(--white);
+      border: 1.5px solid var(--border); border-radius: 0;
+      font-family: 'DM Sans', sans-serif; font-size: 0.9rem; color: var(--ink);
+      appearance: none; -webkit-appearance: none; outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s; box-shadow: var(--shadow);
+    }
+    select:focus, input[type="number"]:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(200,168,75,0.15); }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7' viewBox='0 0 12 7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a8070' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 1rem center; padding-right: 2.5rem; cursor: pointer;
+    }
+    .score-row { position: relative; }
+    .score-preview { position: absolute; right: 3rem; top: 50%; transform: translateY(-50%); font-family: 'Playfair Display', serif; font-size: 1rem; font-weight: 700; color: var(--gold); pointer-events: none; }
+    .form-section-label { grid-column: 1/-1; font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+    .submit-area { grid-column: 1/-1; display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem; margin-top: 0.5rem; border-top: 1px solid var(--border); }
+    .submit-note { font-size: 0.8rem; color: var(--muted); max-width: 22rem; line-height: 1.55; }
+    .btn-submit {
+      background: var(--ink); color: var(--cream); border: 2px solid var(--ink);
+      padding: 0.9rem 2.6rem; font-family: 'DM Sans', sans-serif; font-size: 0.9rem;
+      font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+      transition: all 0.25s; position: relative; overflow: hidden; white-space: nowrap;
+    }
+    .btn-submit::before { content: ''; position: absolute; inset: 0; background: var(--gold); transform: translateX(-100%); transition: transform 0.3s ease; }
+    .btn-submit:hover { border-color: var(--gold); color: var(--ink); }
+    .btn-submit:hover::before { transform: translateX(0); }
+    .btn-submit span { position: relative; z-index: 1; }
+
+    /* animation delays */
+    .field-group:nth-child(1){animation-delay:.15s}.field-group:nth-child(2){animation-delay:.21s}
+    .field-group:nth-child(3){animation-delay:.27s}.field-group:nth-child(4){animation-delay:.33s}
+    .field-group:nth-child(5){animation-delay:.39s}.field-group:nth-child(6){animation-delay:.45s}
+    .field-group:nth-child(7){animation-delay:.51s}.field-group:nth-child(8){animation-delay:.57s}
+    .field-group:nth-child(9){animation-delay:.63s}.field-group:nth-child(10){animation-delay:.69s}
+
+    /* ── RESULT PANEL ── */
+    .result-panel {
+      position: sticky; top: 6rem;
+      background: var(--ink); color: var(--cream);
+      padding: 2.5rem; opacity: 0;
+      animation: fadeUp 0.7s 0.2s forwards;
+    }
+    .result-panel-eyebrow { font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin-bottom: 1.2rem; display: flex; align-items: center; gap: 0.5rem; }
+    .result-panel-eyebrow::before { content: ''; width: 1rem; height: 1px; background: var(--gold); }
+    .result-big-score { font-family: 'Playfair Display', serif; font-size: 7rem; font-weight: 900; line-height: 1; letter-spacing: -0.04em; }
+    .result-big-score sup { font-size: 0.22em; color: var(--muted); font-weight: 300; vertical-align: super; margin-left: 0.15em; }
+    .result-subject { font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(245,240,232,0.45); margin-top: 0.2rem; margin-bottom: 1.6rem; }
+    /* meter */
+    .r-meter-track { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 0.5rem; }
+    .r-meter-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--gold), var(--rust)); transition: width 1.3s cubic-bezier(0.16,1,0.3,1); }
+    .r-meter-labels { display: flex; justify-content: space-between; font-size: 0.68rem; color: rgba(245,240,232,0.35); margin-bottom: 1.8rem; }
+    /* insight chips */
+    .r-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 1.8rem; }
+    .r-chip { background: rgba(245,240,232,0.06); border: 1px solid rgba(200,168,75,0.2); padding: 0.9rem 1rem; }
+    .r-chip-label { font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(245,240,232,0.4); margin-bottom: 0.3rem; }
+    .r-chip-val { font-family: 'Playfair Display', serif; font-size: 1.15rem; font-weight: 700; color: var(--cream); }
+    /* grade badge */
+    .r-grade-badge { display: inline-block; background: var(--gold); color: var(--ink); font-family: 'Playfair Display', serif; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.4rem 1.2rem; margin-bottom: 1.5rem; }
+    /* message */
+    .r-msg { font-size: 0.88rem; line-height: 1.7; color: rgba(245,240,232,0.65); border-top: 1px solid rgba(200,168,75,0.2); padding-top: 1.2rem; }
+    .r-msg strong { color: var(--gold); }
+    /* try again */
+    .r-again { display: inline-block; margin-top: 1.5rem; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); text-decoration: none; border-bottom: 1px solid rgba(200,168,75,0.4); padding-bottom: 2px; transition: border-color 0.2s; }
+    .r-again:hover { border-color: var(--gold); }
+
+    @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+    @media(max-width:900px){
+      .page-outer.has-result{grid-template-columns:1fr}
+      .result-panel{position:static}
+    }
+    @media(max-width:600px){
+      form{grid-template-columns:1fr}
+      .field-group.full-width{grid-column:1}
+      .submit-area{flex-direction:column;gap:1rem;align-items:flex-start}
+      nav{padding:1rem 1.2rem}
+      .page-outer{padding:2rem 1.2rem 4rem}
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">Score<span>IQ</span></a>
+  <a href="/" class="nav-back">← Back to Home</a>
+</nav>
+
+{# Detect if we have a result — add has-result class to outer grid #}
+<div class="page-outer {% if results is defined and results is not none %}has-result{% endif %}" id="pageOuter">
+
+  <!-- ── FORM COLUMN ── -->
+  <div>
+    <div class="page-header">
+      <div class="page-eyebrow">Performance Predictor</div>
+      <h1 class="page-title">Tell us about <em>yourself.</em></h1>
+      <p class="page-sub">We'll use your academic profile to predict your Mathematics score with high precision.</p>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progressBar"></div>
+    </div>
+
+    <form action="{{ url_for('predict_datapoint') }}" method="post" id="predForm">
+
+      <div class="form-section-label" style="opacity:0;animation:fadeUp .6s .1s forwards">Personal Profile</div>
+
+      <div class="field-group">
+        <label class="field-label" for="gender">Gender</label>
+        <select id="gender" name="gender" required>
+          <option selected disabled value="">Select gender</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="ethnicity">Race / Ethnicity</label>
+        <select id="ethnicity" name="ethnicity" required>
+          <option selected disabled value="">Select group</option>
+          <option value="group A">Group A</option>
+          <option value="group B">Group B</option>
+          <option value="group C">Group C</option>
+          <option value="group D">Group D</option>
+          <option value="group E">Group E</option>
+        </select>
+      </div>
+
+      <div class="field-group full-width">
+        <label class="field-label" for="parental_level_of_education">Parental Level of Education</label>
+        <p class="field-hint">Highest level completed by either parent.</p>
+        <select id="parental_level_of_education" name="parental_level_of_education" required>
+          <option selected disabled value="">Select education level</option>
+          <option value="associate's degree">Associate's Degree</option>
+          <option value="bachelor's degree">Bachelor's Degree</option>
+          <option value="high school">High School</option>
+          <option value="master's degree">Master's Degree</option>
+          <option value="some college">Some College</option>
+          <option value="some high school">Some High School</option>
+        </select>
+      </div>
+
+      <div class="form-section-label" style="opacity:0;animation:fadeUp .6s .35s forwards">Academic Context</div>
+
+      <div class="field-group">
+        <label class="field-label" for="lunch">Lunch Type</label>
+        <p class="field-hint">Indicates socioeconomic context.</p>
+        <select id="lunch" name="lunch" required>
+          <option selected disabled value="">Select lunch type</option>
+          <option value="free/reduced">Free / Reduced</option>
+          <option value="standard">Standard</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="test_preparation_course">Test Prep Course</label>
+        <p class="field-hint">Did you complete a prep course?</p>
+        <select id="test_preparation_course" name="test_preparation_course" required>
+          <option selected disabled value="">Select status</option>
+          <option value="none">None — Not Taken</option>
+          <option value="completed">Completed ✓</option>
+        </select>
+      </div>
+
+      <div class="form-section-label" style="opacity:0;animation:fadeUp .6s .52s forwards">Your Scores</div>
+
+      <div class="field-group">
+        <label class="field-label" for="reading_score">Reading Score</label>
+        <p class="field-hint">Out of 100.</p>
+        <div class="score-row">
+          <input type="number" id="reading_score" name="reading_score" placeholder="e.g. 72" min="0" max="100"
+            oninput="livePreview('reading_score','rp');trackProgress()"/>
+          <div class="score-preview" id="rp"></div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="writing_score">Writing Score</label>
+        <p class="field-hint">Out of 100.</p>
+        <div class="score-row">
+          <input type="number" id="writing_score" name="writing_score" placeholder="e.g. 68" min="0" max="100"
+            oninput="livePreview('writing_score','wp');trackProgress()"/>
+          <div class="score-preview" id="wp"></div>
+        </div>
+      </div>
+
+      <div class="submit-area field-group full-width">
+        <p class="submit-note">Your data is used only for this prediction and is never stored.</p>
+        <button type="submit" class="btn-submit"><span>Predict My Maths Score →</span></button>
+      </div>
+
+    </form>
+  </div>
+
+  <!-- ── RESULT COLUMN (only rendered when Flask returns results) ── -->
+  {% if results is defined and results is not none %}
+  <div class="result-panel" id="resultPanel">
+    <div class="result-panel-eyebrow">Your Prediction</div>
+    <div class="result-big-score">{{ "%.1f"|format(results) }}<sup>/100</sup></div>
+    <div class="result-subject">Mathematics</div>
+
+    <div class="r-meter-track">
+      <div class="r-meter-fill" id="rMeter" style="width:0%"></div>
+    </div>
+    <div class="r-meter-labels"><span>0</span><span>50 — Avg</span><span>100</span></div>
+
+    <div id="rGrade" class="r-grade-badge">—</div>
+
+    <div class="r-chips">
+      <div class="r-chip"><div class="r-chip-label">Percentile</div><div class="r-chip-val" id="rPct">—</div></div>
+      <div class="r-chip"><div class="r-chip-label">Band</div><div class="r-chip-val" id="rBand">—</div></div>
+      <div class="r-chip"><div class="r-chip-label">Gap to 100</div><div class="r-chip-val" id="rGap">—</div></div>
+      <div class="r-chip"><div class="r-chip-label">Status</div><div class="r-chip-val" id="rStatus">—</div></div>
+    </div>
+
+    <div class="r-msg" id="rMsg">Analysing…</div>
+    <a href="/predictdata" class="r-again">← Try Different Inputs</a>
+  </div>
+
+  <script>
+    (function(){
+      const score = parseFloat("{{ results }}") || 0;
+      const s = Math.min(100, Math.max(0, score));
+
+      // animate meter after paint
+      setTimeout(() => { document.getElementById('rMeter').style.width = s + '%'; }, 300);
+
+      let grade, band, pct, status, msg;
+      if      (s >= 90) { grade='A+'; band='Exceptional'; pct='Top 5%';    status='🏆 Elite';    msg=`A score of <strong>${s.toFixed(1)}</strong> places you in the <strong>top 5%</strong> of students. Outstanding work — your preparation is clearly paying off.`; }
+      else if (s >= 80) { grade='A';  band='Excellent';   pct='Top 15%';   status='⭐ Excellent'; msg=`<strong>${s.toFixed(1)}</strong> is well above average. Focused revision on weaker topics could push you into the elite tier.`; }
+      else if (s >= 70) { grade='B';  band='Good';        pct='Top 30%';   status='✅ Good';      msg=`A solid <strong>${s.toFixed(1)}</strong>. Targeted practice on problem areas will make a real difference before exam day.`; }
+      else if (s >= 60) { grade='C';  band='Average';     pct='Top 50%';   status='📊 Average';  msg=`Right on the average line with <strong>${s.toFixed(1)}</strong>. Consistent practice and a test prep course could significantly boost your result.`; }
+      else if (s >= 50) { grade='D';  band='Below Avg';   pct='Bottom 40%';status='📈 Improve';  msg=`<strong>${s.toFixed(1)}</strong> suggests room for improvement. Focus on fundamentals and consider extra support sessions.`; }
+      else              { grade='F';  band='Needs Work';  pct='Bottom 20%';status='🔄 Retry';    msg=`A score of <strong>${s.toFixed(1)}</strong> signals significant challenges. Targeted tutoring and daily practice can make a large difference.`; }
+
+      document.getElementById('rGrade').textContent  = 'Grade ' + grade;
+      document.getElementById('rBand').textContent   = band;
+      document.getElementById('rPct').textContent    = pct;
+      document.getElementById('rGap').textContent    = (100 - s).toFixed(1) + ' pts';
+      document.getElementById('rStatus').textContent = status;
+      document.getElementById('rMsg').innerHTML      = msg;
+
+      // scroll result into view on mobile
+      if (window.innerWidth < 900) {
+        setTimeout(() => document.getElementById('resultPanel').scrollIntoView({behavior:'smooth', block:'start'}), 400);
+      }
+    })();
+  </script>
+  {% endif %}
+
+</div><!-- /page-outer -->
+
+<script>
+  function livePreview(inputId, previewId) {
+    const v = document.getElementById(inputId).value;
+    document.getElementById(previewId).textContent = (v !== '' && v >= 0 && v <= 100) ? v + '/100' : '';
+  }
+  function trackProgress() {
+    const fields = document.querySelectorAll('#predForm select[required], #predForm input[type="number"]');
+    let filled = 0;
+    fields.forEach(f => { if (f.value !== '') filled++; });
+    document.getElementById('progressBar').style.width = Math.round((filled / fields.length) * 100) + '%';
+  }
+  document.querySelectorAll('#predForm select').forEach(s => s.addEventListener('change', trackProgress));
+</script>
+
+</body>
+</html>
